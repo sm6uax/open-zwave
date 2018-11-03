@@ -58,7 +58,13 @@
 #include "value_classes/ValueSchedule.h"
 #include "value_classes/ValueShort.h"
 #include "value_classes/ValueString.h"
+#include "MsgQueue.h"
+#include "CSharpMsg.h"
 
+#include "platform/Utilities.hpp"
+#include "platform/JsonSeriazable.hpp"
+
+#include "ozwcp.h"
 using namespace OpenZWave;
 
 Manager* Manager::s_instance = NULL;
@@ -4755,3 +4761,288 @@ void Manager::GetNodeStatistics
 	}
 
 }
+
+extern "C" {
+
+	static int *wserver;
+	MsgQueue m_msgQueue;
+
+	//consumer: used by C# to retrieve commands/status
+	const char* GetMessage(void)
+	{
+		try {
+			std::printf("GetMessage: Try to get message from queue!\n");
+			std::string str = m_msgQueue.GetMessage();
+			//std::printf("GetMessage: Got it %s!\n",str);
+			int size = strlen(str.c_str()) + 1;
+			char* msg = new char[size];
+			// Copy the data
+			memcpy(msg, str.c_str(), size);
+			msg[size - 1] = '\0'; // null terminate just for safety
+			std::printf("GetMessage: Got it %s!\n", msg);
+			return  msg;
+		}
+		catch (const std::exception& exp)
+		{
+			std::printf("GetMessage: exception \n");
+			exp.what();
+			return NULL;
+		}
+	}
+
+	// Callback that is triggered when a value, group or node changes
+	void OnNotification(Notification const* _notification, void* _context)
+	{
+		try {
+			// Create the message	
+			Yodiwo::Plegma::CSharpMsg msg;
+			ValueID id = _notification->GetValueID();
+			msg.NotificationType = _notification->GetType();
+			msg.NotificationCode = _notification->GetNotification();
+			msg.homeID = _notification->GetHomeId();
+			msg.nodeID = _notification->GetNodeId();
+			msg.name = Manager::Get()->GetNodeProductName(_notification->GetHomeId(), _notification->GetNodeId()).c_str();
+			msg.genre = id.GetGenre();
+			msg.type = _notification->GetValueID().GetType();
+			msg.commandClassId = _notification->GetValueID().GetCommandClassId();
+			msg.instance = _notification->GetValueID().GetInstance();
+			msg.valueIndex = _notification->GetValueID().GetIndex();
+			std::string str;
+			if (msg.NotificationType == Notification::Type_ValueChanged
+				|| msg.NotificationType == Notification::Type_ValueAdded
+				|| msg.NotificationType == Notification::Type_ValueRemoved
+				|| msg.NotificationType == Notification::Type_ValueRefreshed)
+				msg.label = Manager::Get()->GetValueLabel(id).c_str();
+			if (msg.NotificationType == Notification::Type_ValueChanged) {
+				if (Manager::Get()->GetValueAsString(id, &str))
+					msg.currentValue = str.c_str();
+			}
+			// Send the message
+			m_msgQueue.SendMessage(msg.toJson().dump());
+		}
+		catch (const std::exception& exp) {
+			std::printf("OnNotification: exception \n");
+			exp.what();
+		}
+	}
+
+	// start controller connection at port devname
+	int Connect(char* devname) {
+		try
+		{
+			// Initialize Web Server - Open ZWave Control Panel
+			///////////////////////////////////////////////////
+
+			long webport = DEFAULT_PORT;
+			webserver = new Webserver(webport, devname);
+			cout << "OZWCP webserver at port: " << webport << "\n";
+			Manager::Get()->AddWatcher(OnWebNotification, webserver);
+
+			///////////////////////////////////////////////////
+
+			Manager::Get()->AddDriver(std::string(devname));
+			return 1;
+		}
+		catch (const std::exception& exp) {
+			std::printf("init: exception \n");
+			exp.what();
+			return 0;
+		}
+	}
+
+	// start manager, enable add watcher
+	int init(char* SaveConfigPath) {
+		try {
+			string path = SaveConfigPath;
+			std::string configPath = path + "config/";
+			Options::Create(configPath, path, "--SaveConfiguration=true --DumpTriggerLevel=0");
+			Options::Get()->Lock();
+
+			Manager::Create();
+			Manager::Get()->AddWatcher(OnNotification, wserver);
+
+			return 1;
+		}
+		catch (const std::exception& exp) {
+			std::printf("init: exception \n");
+			exp.what();
+			return 0;
+		}
+	}
+
+	//// start ozwcp webserver
+	//int initWebServer() {
+	//	startWebServer();
+	//	cout << "Step 4 return from webserver!!" << "\n";
+	//	return 1;
+	//}
+
+	// stop manager
+	int deInit(uint32 homeId) {
+		try {
+			// save devices
+			Manager::Get()->WriteConfig(homeId);
+
+			// stop OZWCP webserver
+			delete webserver;
+			Manager::Get()->RemoveWatcher(OnWebNotification, NULL);
+
+			Manager::Get()->RemoveWatcher(OnNotification, NULL);
+			Manager::Destroy();
+			Options::Destroy();
+
+			// unblock get message
+			m_msgQueue.Stop();
+
+			//Clean debug trace
+			Yodiwo::Utilities::TraceSystem::StopTrace();
+
+			return 1;
+		}
+		catch (exception ex) { return 0; }
+	}
+
+	// send add device command to controller
+	int AddDevice(bool isSecure, uint32 homeId) {
+		try {
+			Manager::Get()->AddNode(homeId, isSecure);
+			return 1;
+		}
+		catch (const std::exception& exp) {
+			std::printf("AddDevice: exception \n");
+			exp.what();
+			return 0;
+		}
+	}
+
+	// send remove device command to controller
+	int RemoveDevice(uint32 homeId) {
+		try {
+			Manager::Get()->RemoveNode(homeId);
+			return 1;
+		}
+		catch (const std::exception& exp) {
+			std::printf("RemoveDevice: exception \n");
+			exp.what();
+			return 0;
+		}
+	}
+
+	// cancel controller current operation
+	bool CancelOperation(uint32 homeId) {
+		try {
+			return Manager::Get()->CancelControllerCommand(homeId);
+		}
+		catch (const std::exception& exp) {
+			std::printf("CancelOperation: exception \n");
+			exp.what();
+			return 0;
+		}
+	}
+
+	// change device value
+	bool ChangeDeviceValue(const char* msg, char* newValue, uint32 homeId) {
+		try {
+			std::cout << msg << '\n';
+			// parse msg
+			Yodiwo::json json = Yodiwo::json::parse(msg);
+			Yodiwo::Plegma::ValueIDmsg* CSmsg = new Yodiwo::Plegma::ValueIDmsg(json);
+			ValueID vid = ValueID(homeId, CSmsg->nodeID, CSmsg->genre, CSmsg->commandClassId, CSmsg->instance, CSmsg->valueIndex, CSmsg->type);
+			string nValue = newValue;
+			if (Manager::Get()->SetValue(vid, nValue)) {
+				return 1;
+			}
+			else
+				return 0;
+			delete CSmsg;
+
+		}
+		catch (const std::exception& exp) {
+			std::printf("ChangeDeviceValue: exception \n");
+			exp.what();
+			return 0;
+		}
+	}
+
+	// change group association
+	bool ChangeGroupAssociation(uint32 homeId, uint8 nodeId, uint8 targetNodeId, uint8 instance, uint8 group) {
+		try {
+			cout << "Change group association received for node-" << nodeId << " instance-" << instance << " group-" << "targetnode-" << targetNodeId << "\n\n";
+			Manager::Get()->AddAssociation(homeId, nodeId, group, targetNodeId, instance);
+			return 1;
+		}
+		catch (const std::exception& exp) {
+			std::printf("ChangeGroupAssociation: exception \n");
+			exp.what();
+			return 0;
+		}
+	}
+
+	// save devices
+	bool saveZWaveDevices(uint32 homeId) {
+		try {
+			// save devices
+			Manager::Get()->WriteConfig(homeId);
+			return 1;
+		}
+		catch (const std::exception& exp) {
+			std::printf("ChangeGroupAssociation: exception \n");
+			exp.what();
+			return 0;
+		}
+	}
+
+	// get node current state
+	const char* GetNodeState(uint32 homeId, uint8 nodeId) {
+		try {
+			bool isNodeFailed = Manager::Get()->HasNodeFailed(homeId, nodeId);
+			std::printf("Nodes has failed response is: %d \n", isNodeFailed);
+			// assign a valid state
+			bool listening = Manager::Get()->IsNodeListeningDevice(homeId, nodeId);
+			bool flirs = Manager::Get()->IsNodeFrequentListeningDevice(homeId, nodeId);
+			std::string str = "";
+			if (Manager::Get()->IsNodeFailed(homeId, nodeId)) {
+				str = "Dead";
+			}
+			else {
+				string s = Manager::Get()->GetNodeQueryStage(homeId, nodeId);
+				if (s == "Complete") {
+					if (!listening && !flirs)
+						str = Manager::Get()->IsNodeAwake(homeId, nodeId) ? "Awake" : "Sleeping";
+					else
+						str = "Ready";
+				}
+				else if (s == "Unknown") {
+					str = "Unknown";
+				}
+				else {
+					if (!listening && !flirs)
+						str = s + (Manager::Get()->IsNodeAwake(homeId, nodeId) ? " (awake)" : " (sleeping)");
+				}
+			}
+			int size = strlen(str.c_str()) + 1;
+			char* msg = new char[size];
+			// Copy the data
+			memcpy(msg, str.c_str(), size);
+			msg[size - 1] = '\0';
+			return  msg;
+		}
+		catch (const std::exception& exp) {
+			std::printf("GetNodesState: exception \n");
+			exp.what();
+			std::string str = "Internal Error";
+			int size = strlen(str.c_str()) + 1;
+			char* msg = new char[size];
+			// Copy the data
+			memcpy(msg, str.c_str(), size);
+			msg[size - 1] = '\0';
+			return  msg;
+		}
+	}
+
+	// dump function for testing
+	int myTestFunc() {
+		return 1;
+	}
+
+}			

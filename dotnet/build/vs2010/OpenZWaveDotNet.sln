@@ -1,6 +1,8 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual Studio 2010
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28010.2036
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OpenZWaveDotNet", "OpenZWaveDotNet.vcxproj", "{0DD42424-B4AB-45C3-897C-774D1C5917C3}"
 	ProjectSection(ProjectDependencies) = postProject
 		{497F9828-DEC2-4C80-B9E0-AD066CCB587C} = {497F9828-DEC2-4C80-B9E0-AD066CCB587C}
@@ -10,20 +12,32 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OpenZWave", "..\..\..\cpp\b
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|ARM = Debug|ARM
 		Debug|Win32 = Debug|Win32
+		Release|ARM = Release|ARM
 		Release|Win32 = Release|Win32
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0DD42424-B4AB-45C3-897C-774D1C5917C3}.Debug|ARM.ActiveCfg = Debug|Win32
 		{0DD42424-B4AB-45C3-897C-774D1C5917C3}.Debug|Win32.ActiveCfg = Debug|Win32
 		{0DD42424-B4AB-45C3-897C-774D1C5917C3}.Debug|Win32.Build.0 = Debug|Win32
+		{0DD42424-B4AB-45C3-897C-774D1C5917C3}.Release|ARM.ActiveCfg = Release|Win32
 		{0DD42424-B4AB-45C3-897C-774D1C5917C3}.Release|Win32.ActiveCfg = Release|Win32
 		{0DD42424-B4AB-45C3-897C-774D1C5917C3}.Release|Win32.Build.0 = Release|Win32
+		{497F9828-DEC2-4C80-B9E0-AD066CCB587C}.Debug|ARM.ActiveCfg = Debug|ARM
+		{497F9828-DEC2-4C80-B9E0-AD066CCB587C}.Debug|ARM.Build.0 = Debug|ARM
+		{497F9828-DEC2-4C80-B9E0-AD066CCB587C}.Debug|ARM.Build.2 = ReleaseDLL|ARM
 		{497F9828-DEC2-4C80-B9E0-AD066CCB587C}.Debug|Win32.ActiveCfg = Debug|Win32
 		{497F9828-DEC2-4C80-B9E0-AD066CCB587C}.Debug|Win32.Build.0 = Debug|Win32
+		{497F9828-DEC2-4C80-B9E0-AD066CCB587C}.Release|ARM.ActiveCfg = Release|Win32
+		{497F9828-DEC2-4C80-B9E0-AD066CCB587C}.Release|ARM.Build.0 = Release|Win32
 		{497F9828-DEC2-4C80-B9E0-AD066CCB587C}.Release|Win32.ActiveCfg = Release|Win32
 		{497F9828-DEC2-4C80-B9E0-AD066CCB587C}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5EE43585-56D9-493A-B64F-B6B94CA1D8BD}
 	EndGlobalSection
 EndGlobal
